@@ -1,14 +1,16 @@
-streamlit
-pandas
-numpy
-python-docx
-PyMuPDF
-google-generativeai
-openpyxl
-pillow
-plotly
-python-dateutil
-requests
-urllib3
-certifi
-matplotlib
+streamlit>=1.32
+
+pandas>=2.0
+numpy>=1.24
+
+# PDF / DOCX parsing
+PyMuPDF>=1.24      # provides the "fitz" module
+python-docx>=1.0
+
+# LLM providers
+google-generativeai>=0.3.2   # Gemini via google.generativeai[web:56]
+openai>=1.2.0                # ChatGPT / GPT‑4o[web:23][web:26]
+anthropic>=0.86.0            # Claude[web:52][web:58]
+
+# Optional but common
+requests>=2.31
