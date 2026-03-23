@@ -54,10 +54,10 @@ ANTHROPIC_MODELS = {
 
 # Unified model names
 if LLM_PROVIDER == "google":
-    MAIN_MODEL = GOOGLE_AI_MODELS["gemini_flash"]
-    SCORING_MODEL = GOOGLE_AI_MODELS["gemini_flash"]
-    CHATBOT_MODEL = GOOGLE_AI_MODELS["gemini_flash"]
-    DATA_EXTRACTION_MODEL = GOOGLE_AI_MODELS["gemini_flash"]
+    MAIN_MODEL = GOOGLE_AI_MODELS["flash_25_lite"]
+    SCORING_MODEL = GOOGLE_AI_MODELS["flash_25_lite"]
+    CHATBOT_MODEL = GOOGLE_AI_MODELS["flash_25_lite"]
+    DATA_EXTRACTION_MODEL = GOOGLE_AI_MODELS["flash_25_lite"]
 elif LLM_PROVIDER == "openai":
     MAIN_MODEL = OPENAI_MODELS["main"]
     SCORING_MODEL = OPENAI_MODELS["main"]
@@ -69,10 +69,10 @@ elif LLM_PROVIDER == "anthropic":
     CHATBOT_MODEL = ANTHROPIC_MODELS["chat"]
     DATA_EXTRACTION_MODEL = ANTHROPIC_MODELS["main"]
 else:
-    MAIN_MODEL = GOOGLE_AI_MODELS["gemini_flash"]
-    SCORING_MODEL = GOOGLE_AI_MODELS["gemini_flash"]
-    CHATBOT_MODEL = GOOGLE_AI_MODELS["gemini_flash"]
-    DATA_EXTRACTION_MODEL = GOOGLE_AI_MODELS["gemini_flash"]
+    MAIN_MODEL = GOOGLE_AI_MODELS["flash_25_lite"]
+    SCORING_MODEL = GOOGLE_AI_MODELS["flash_25_lite"]
+    CHATBOT_MODEL = GOOGLE_AI_MODELS["flash_25_lite"]
+    DATA_EXTRACTION_MODEL = GOOGLE_AI_MODELS["flash_25_lite"]
 
 # -----------------------------
 # FILE / SCORING CONFIG
