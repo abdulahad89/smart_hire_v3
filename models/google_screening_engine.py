@@ -22,6 +22,16 @@ class GoogleAIManager:
             user_content=prompt,
             max_tokens=GEMINI_SETTINGS["data_extraction"]["max_output_tokens"],
         )
+
+        # NEW: guard against empty response
+        if not raw or not raw.strip():
+            return {
+                "success": False,
+                "error": "LLM returned empty response for data_extraction",
+                "raw": raw,
+            }
+        #End Here
+        
         try:
             data = json.loads(raw)
             return {"success": True, "data": data}
@@ -40,6 +50,16 @@ class GoogleAIManager:
             user_content=prompt,
             max_tokens=GEMINI_SETTINGS["relevance_scoring"]["max_output_tokens"],
         )
+
+        # NEW: guard against empty response
+        if not raw or not raw.strip():
+            return {
+                "success": False,
+                "error": "LLM returned empty response for relevance_scoring",
+                "raw": raw,
+            }
+        #End here
+
         try:
             data = json.loads(raw)
         except Exception as e:
