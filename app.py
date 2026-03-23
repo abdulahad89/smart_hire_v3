@@ -377,42 +377,96 @@ def render_analysis_results():
 
 
 def run_comprehensive_analysis(selected_resumes, selected_jds, analysis_depth):
-    engine = st.session_state.screening_engine
+    """Run comprehensive multi-resume vs multi-JD analysis"""
+    st.markdown("### Running Comprehensive Analysis...")
+
+    # Clear previous results
+    st.session_state.analysis_results = []
+
     results = []
-    total = len(selected_resumes) * len(selected_jds)
-    progress = st.progress(0)
-    status = st.empty()
-    count = 0
+    total_analyses = len(selected_resumes) * len(selected_jds)
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    analysis_count = 0
 
-    for ri in selected_resumes:
-        r = st.session_state.resumes_data[ri]
-        for ji in selected_jds:
-            jd = st.session_state.job_descriptions[ji]
-            count += 1
-            progress.progress(count / total)
-            status.text(f"Analyzing {r['filename']} vs {jd['title']} ({count}/{total})")
+    for resume_idx in selected_resumes:
+        resume_data = st.session_state.resumes_data[resume_idx]
+
+        for jd_idx in selected_jds:
+            jd_data = st.session_state.job_descriptions[jd_idx]
+
+            analysis_count += 1
+            progress = analysis_count / total_analyses
+            progress_bar.progress(progress)
+            status_text.text(
+                f"Analyzing {resume_data['filename']} vs {jd_data['title']} "
+                f"({analysis_count}/{total_analyses})"
+            )
+
             try:
-                temp_path = create_temp_file_from_data(r["raw_text"], r["filename"])
-                jd_aug = build_mgroup_job_context(jd)
-                res = engine.process_single_resume(temp_path, r["filename"], jd_aug)
-                res["resume_index"] = ri
-                res["jd_index"] = ji
-                res["jd_title"] = jd["title"]
-                res["analysis_depth"] = analysis_depth
-                res["analysis_timestamp"] = datetime.now().isoformat()
-                results.append(res)
-                try:
-                    os.unlink(temp_path)
-                except Exception:
-                    pass
-            except Exception as e:
-                st.error(f"Analysis failed for {r['filename']} vs {jd['title']}: {e}")
+                # Create temporary file for analysis
+                temp_path = create_temp_file_from_data(
+                    resume_data["raw_text"],
+                    resume_data["filename"]
+                )
 
+                # If you have a helper that augments the JD with M Group context, use it here
+                # otherwise just use jd_data["description"]
+                try:
+                    augmented_jd_description = build_mgroup_job_context(jd_data)
+                except NameError:
+                    augmented_jd_description = jd_data["description"]
+
+                # ----- CALL THE ENGINE -----
+                result = st.session_state.screening_engine.process_single_resume(
+                    temp_path,
+                    resume_data["filename"],
+                    augmented_jd_description,
+                )
+
+                # ----- DEBUG BLOCK (STEP B) -----
+                if result.get("status") != "completed":
+                    st.error(
+                        f"Analysis failed for {resume_data['filename']} "
+                        f"vs {jd_data['title']}: {result.get('error', 'Unknown error')}"
+                    )
+                    # Show whatever raw text we have from the LLM
+                    raw = (
+                        result.get("analysis", {}).get("scoring_raw")
+                        or result.get("raw")
+                        or result
+                    )
+                    st.write("RAW LLM OUTPUT:", raw)
+
+                # Add context information (still useful even if failed)
+                result["resume_index"] = resume_idx
+                result["jd_index"] = jd_idx
+                result["jd_title"] = jd_data["title"]
+                result["analysis_depth"] = analysis_depth
+                result["analysis_timestamp"] = datetime.now().isoformat()
+
+                results.append(result)
+
+                # Clean up temp file
+                if os.path.exists(temp_path):
+                    os.unlink(temp_path)
+
+            except Exception as e:
+                st.error(
+                    f"Analysis crashed for {resume_data['filename']} "
+                    f"vs {jd_data['title']}: {e}"
+                )
+
+    # Store results
     st.session_state.analysis_results = results
-    progress.empty()
-    status.empty()
+
+    progress_bar.empty()
+    status_text.empty()
+
     st.success(f"Completed {len(results)} analyses!")
 
+    if results:
+        show_analysis_summary(results)
 
 def create_temp_file_from_data(text_data: str, filename: str) -> str:
     temp_dir = "./data/temp_uploads"
