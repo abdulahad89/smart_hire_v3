@@ -1,0 +1,14 @@
+streamlit
+pandas
+numpy
+python-docx
+PyMuPDF
+google-generativeai
+openpyxl
+pillow
+plotly
+python-dateutil
+requests
+urllib3
+certifi
+matplotlib
