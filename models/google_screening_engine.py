@@ -1,6 +1,9 @@
 import json
 from typing import Dict, Any
 
+from config import GEMINI_SETTINGS, get_gemini_prompt
+from models import llm_provider
+
 from parser import EnhancedResumeParser
 from config import (
     get_gemini_prompt,
@@ -15,78 +18,97 @@ class GoogleAIManager:
     """LLM-backed manager for data extraction, scoring, and chat."""
 
     def extract_resume_data(self, resume_text: str) -> Dict[str, Any]:
+        """Call LLM to extract structured data from resume text."""
         prompt = get_gemini_prompt("data_extraction", resume_text=resume_text)
-        sys_prompt = "You are an expert resume parser. Return strictly valid JSON."
+        system_prompt = "You are an expert resume parser. Return ONLY valid JSON."
+
         raw = llm_provider.generate_text(
-            system_prompt=sys_prompt,
+            system_prompt=system_prompt,
             user_content=prompt,
             max_tokens=GEMINI_SETTINGS["data_extraction"]["max_output_tokens"],
         )
 
-        # NEW: guard against empty response
+        # Guard: LLM returned nothing or only whitespace
         if not raw or not raw.strip():
             return {
                 "success": False,
-                "error": "LLM returned empty response for data_extraction",
+                "error": "LLM returned empty response in extract_resume_data",
                 "raw": raw,
             }
-        #End Here
-        
+
         try:
             data = json.loads(raw)
-            return {"success": True, "data": data}
+            return {
+                "success": True,
+                "data": data,
+                "raw": raw,  # keep for debugging
+            }
         except Exception as e:
-            return {"success": False, "error": f"JSON parse error: {e}", "raw": raw}
-
+            # IMPORTANT: propagate both error and raw text
+            return {
+                "success": False,
+                "error": f"JSON parse error in extract_resume_data: {e}",
+                "raw": raw,
+            }
+            
     def score_candidate(self, job_description: str, candidate_json: Dict[str, Any]) -> Dict[str, Any]:
+        """Score a candidate vs a JD using the LLM, returning structured scores."""
         prompt = get_gemini_prompt(
             "relevance_scoring",
             job_description=job_description,
             candidate_data=json.dumps(candidate_json),
         )
-        sys_prompt = "You are an expert HR consultant scoring candidates for M Group Services."
+        system_prompt = (
+            "You are an expert HR consultant scoring candidates for M Group Services. "
+            "Return ONLY valid JSON following the requested schema."
+        )
+
         raw = llm_provider.generate_text(
-            system_prompt=sys_prompt,
+            system_prompt=system_prompt,
             user_content=prompt,
             max_tokens=GEMINI_SETTINGS["relevance_scoring"]["max_output_tokens"],
         )
 
-        # NEW: guard against empty response
+        # Guard: empty / whitespace response
         if not raw or not raw.strip():
             return {
                 "success": False,
-                "error": "LLM returned empty response for relevance_scoring",
+                "error": "LLM returned empty response in score_candidate",
                 "raw": raw,
             }
-        #End here
 
         try:
             data = json.loads(raw)
         except Exception as e:
             return {
                 "success": False,
-                "error": f"JSON parse error: {e}",
+                "error": f"JSON parse error in score_candidate: {e}",
                 "raw": raw,
             }
 
-        overall = data.get("overall_score", 0) / 100.0
-        cats = data.get("category_scores", {})
-        rel = cats.get("technical_skills", 0) / 100.0
-        exp = cats.get("experience_relevance", 0) / 100.0
+        # Compute composite score safely
+        overall = float(data.get("overall_score", 0)) / 100.0
+        cat = data.get("category_scores", {}) or {}
+        relevance = float(cat.get("experience_relevance", 0)) / 100.0
+        skills = float(cat.get("technical_skills", 0)) / 100.0
 
-        comp = (
-            SCORING_WEIGHTS["relevance_score"] * overall
-            + SCORING_WEIGHTS["experience_match"] * exp
-            + SCORING_WEIGHTS["skills_match"] * rel
+        composite = (
+            0.7 * overall +
+            0.2 * relevance +
+            0.1 * skills
         )
 
-        scores = {
-            "composite_score": comp,
-            "relevance_score": overall,
-            "experience_score": exp,
-            "skills_score": rel,
+        return {
+            "success": True,
+            "scores": {
+                "composite_score": composite,
+                "relevance_score": relevance,
+                "skills_score": skills,
+                "experience_score": relevance,  # or a separate field if you have it
+            },
+            "analysis": data,
+            "raw": raw,
         }
-        return {"success": True, "scores": scores, "raw": data}
 
     def detailed_analysis(self, job_title: str, job_description: str, candidate_json: Dict[str, Any]) -> str:
         prompt = get_gemini_prompt(
@@ -141,36 +163,54 @@ class GoogleAIScreeningEngine:
         }
 
     def process_single_resume(self, file_path: str, filename: str, job_description: str) -> Dict[str, Any]:
-        """Parse resume, extract structured data, score against JD."""
-        parse_result = self.parser.parse_resume(file_path, filename)
-        if not parse_result.get("success"):
+        """End-to-end processing for one resume vs one JD."""
+        try:
+            # 1) parse file → text (already done by your parser)
+            parsed = self.parser.parse_resume(file_path, filename)
+            if not parsed.get("success"):
+                return {
+                    "status": "failed",
+                    "error": parsed.get("error", "Parser failed"),
+                }
+
+            resume_text = parsed.get("cleaned_text") or parsed.get("raw_text", "")
+
+            # 2) Extract structured data via LLM
+            extraction = self.extract_resume_data(resume_text)
+            if not extraction.get("success"):
+                return {
+                    "status": "failed",
+                    "error": extraction.get("error", "Extraction failed"),
+                    "raw": extraction.get("raw"),
+                }
+
+            candidate_json = extraction.get("data", {})
+
+            # 3) Score candidate via LLM
+            scoring = self.score_candidate(job_description, candidate_json)
+            if not scoring.get("success"):
+                return {
+                    "status": "failed",
+                    "error": scoring.get("error", "Scoring failed"),
+                    "raw": scoring.get("raw"),
+                    "analysis": {
+                        "extracted_data": candidate_json,
+                    },
+                }
+
+            # 4) Successful path
             return {
-                "status": "failed",
-                "error": parse_result.get("error", "Unknown parsing error"),
+                "status": "completed",
+                "scores": scoring["scores"],
+                "analysis": {
+                    "extracted_data": candidate_json,
+                    "scoring_details": scoring["analysis"],
+                },
+                "raw": scoring.get("raw"),
             }
 
-        resume_text = parse_result.get("cleaned_text", "")
-
-        # Extract structured data via LLM
-        extraction = self.google_ai_manager.extract_resume_data(resume_text)
-        extracted_data = extraction.get("data", {}) if extraction.get("success") else {}
-
-        # Score candidate
-        scoring = self.google_ai_manager.score_candidate(job_description, extracted_data or {})
-        if not scoring.get("success"):
+        except Exception as e:
             return {
                 "status": "failed",
-                "error": scoring.get("error", "Scoring failed"),
+                "error": f"Unhandled exception in process_single_resume: {e}",
             }
-
-        scores = scoring["scores"]
-
-        return {
-            "status": "completed",
-            "scores": scores,
-            "analysis": {
-                "parsed_data": parse_result,
-                "extracted_data": extracted_data,
-                "scoring_raw": scoring.get("raw", {}),
-            },
-        }
