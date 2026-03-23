@@ -9,23 +9,34 @@ from config import (
     ANTHROPIC_API_KEY,
 )
 
-_gemini_client = None
+# Lazy singletons
 _openai_client = None
 _anthropic_client = None
+_gemini_configured = False
 
 
-def _get_gemini_client():
-    global _gemini_client
-    if _gemini_client is None:
-        from google import genai  # pip install google-genai
-        _gemini_client = genai.Client(api_key=GOOGLE_AI_API_KEY)
-    return _gemini_client
+def _ensure_gemini_configured():
+    """
+    Configure google.generativeai once per process.
+
+    Requires: pip install google-generativeai
+    """
+    global _gemini_configured
+    if _gemini_configured:
+        return
+
+    if not GOOGLE_AI_API_KEY:
+        raise RuntimeError("GOOGLE_AI_API_KEY is not set")
+
+    import google.generativeai as genai  # type: ignore
+    genai.configure(api_key=GOOGLE_AI_API_KEY)
+    _gemini_configured = True
 
 
 def _get_openai_client():
     global _openai_client
     if _openai_client is None:
-        from openai import OpenAI  # pip install openai
+        from openai import OpenAI  # type: ignore
         _openai_client = OpenAI(api_key=OPENAI_API_KEY)
     return _openai_client
 
@@ -33,27 +44,34 @@ def _get_openai_client():
 def _get_anthropic_client():
     global _anthropic_client
     if _anthropic_client is None:
-        import anthropic  # pip install anthropic
+        import anthropic  # type: ignore
         _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     return _anthropic_client
 
 
 def generate_text(system_prompt: str, user_content: str, model: str = None, max_tokens: int = 1500) -> str:
+    """
+    Unified text-generation (for extraction, scoring, detailed analysis).
+    """
     model = model or MAIN_MODEL
 
+    # ---------------- Google Gemini (google-generativeai) ----------------
     if LLM_PROVIDER == "google":
-        client = _get_gemini_client()
-        from google.genai import types  # type: ignore
-        resp = client.models.generate_content(
-            model=model,
-            contents=[{"role": "user", "parts": [system_prompt + "\n\n" + user_content]}],
-            config=types.GenerateContentConfig(max_output_tokens=max_tokens, temperature=0.2),
-        )
-        return getattr(resp, "text", "")
+        _ensure_gemini_configured()
+        import google.generativeai as genai  # type: ignore
 
+        full_prompt = system_prompt + "\n\n" + user_content
+        gm = genai.GenerativeModel(model)
+        resp = gm.generate_content(
+            full_prompt,
+            generation_config={"max_output_tokens": max_tokens, "temperature": 0.2},
+        )
+        return getattr(resp, "text", "") or ""
+
+    # ---------------- OpenAI ----------------
     if LLM_PROVIDER == "openai":
         client = _get_openai_client()
-        resp = client.chat.completions.create(  # Chat Completions API[web:23][web:26]
+        resp = client.chat.completions.create(
             model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -64,9 +82,10 @@ def generate_text(system_prompt: str, user_content: str, model: str = None, max_
         )
         return resp.choices[0].message.content or ""
 
+    # ---------------- Anthropic (Claude) ----------------
     if LLM_PROVIDER == "anthropic":
         client = _get_anthropic_client()
-        msg = client.messages.create(  # Claude Messages API[web:24][web:30][web:33]
+        msg = client.messages.create(
             model=model,
             max_tokens=max_tokens,
             messages=[
@@ -74,7 +93,7 @@ def generate_text(system_prompt: str, user_content: str, model: str = None, max_
                 {"role": "user", "content": user_content},
             ],
         )
-        parts = []
+        parts: List[str] = []
         for block in msg.content:
             if hasattr(block, "text"):
                 parts.append(block.text)
@@ -86,25 +105,37 @@ def generate_text(system_prompt: str, user_content: str, model: str = None, max_
 
 
 def chat(system_prompt: str, messages: List[Dict[str, str]], model: str = None, max_tokens: int = 1500) -> str:
+    """
+    Unified chat interface (used by AI Chatbot tab).
+
+    messages: [{"role": "user"/"assistant", "content": "..."}]
+    """
     model = model or CHATBOT_MODEL
 
+    # ---------------- Google Gemini (google-generativeai) ----------------
     if LLM_PROVIDER == "google":
-        client = _get_gemini_client()
-        from google.genai import types  # type: ignore
+        _ensure_gemini_configured()
+        import google.generativeai as genai  # type: ignore
 
-        contents = []
+        gm = genai.GenerativeModel(model)
+
+        # Flatten messages into a single prompt, keeping system prompt separate.
+        prompt_parts: List[str] = []
         if system_prompt:
-            contents.append({"role": "user", "parts": [system_prompt]})
+            prompt_parts.append(f"[SYSTEM]\n{system_prompt}")
         for m in messages:
-            contents.append({"role": m["role"], "parts": [m["content"]]})
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            prompt_parts.append(f"[{role.upper()}]\n{content}")
 
-        resp = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(max_output_tokens=max_tokens, temperature=0.3),
+        full_prompt = "\n\n".join(prompt_parts)
+        resp = gm.generate_content(
+            full_prompt,
+            generation_config={"max_output_tokens": max_tokens, "temperature": 0.3},
         )
-        return getattr(resp, "text", "")
+        return getattr(resp, "text", "") or ""
 
+    # ---------------- OpenAI ----------------
     if LLM_PROVIDER == "openai":
         client = _get_openai_client()
         full_messages = []
@@ -119,18 +150,19 @@ def chat(system_prompt: str, messages: List[Dict[str, str]], model: str = None, 
         )
         return resp.choices[0].message.content or ""
 
+    # ---------------- Anthropic (Claude) ----------------
     if LLM_PROVIDER == "anthropic":
         client = _get_anthropic_client()
-        anthro_messages = []
+        anthro_msgs = []
         if system_prompt:
-            anthro_messages.append({"role": "user", "content": system_prompt})
-        anthro_messages.extend(messages)
+            anthro_msgs.append({"role": "user", "content": system_prompt})
+        anthro_msgs.extend(messages)
         msg = client.messages.create(
             model=model,
             max_tokens=max_tokens,
-            messages=anthro_messages,
+            messages=anthro_msgs,
         )
-        parts = []
+        parts: List[str] = []
         for block in msg.content:
             if hasattr(block, "text"):
                 parts.append(block.text)
