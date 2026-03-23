@@ -39,7 +39,7 @@ if "selected_tab" not in st.session_state:
 # ---------------------------------
 def main():
     st.title("SmartHire.AI")
-    st.markdown("### Multi-Resume vs Multi-JD Analysis (M Group Services)")
+    st.markdown("### Multi-Resume vs Multi-JD Analysis")
 
     create_directories()
 
@@ -237,11 +237,11 @@ def render_job_descriptions():
             horizontal=True,
             key="jd_input_method",
         )
-        title = st.text_input("Job Title", placeholder="e.g., MGroup Site Engineer")
+        title = st.text_input("Job Title", placeholder="e.g.,Site Engineer")
 
         # M Group metadata
         mgroup_sector = st.selectbox(
-            "M Group sector (optional)",
+            "Sector (optional)",
             ["", "Water", "Energy", "Highways", "Rail & Aviation", "Telecom"],
         )
         mgroup_region = st.selectbox(
@@ -259,7 +259,7 @@ def render_job_descriptions():
             jd_text = st.text_area(
                 "Job Description",
                 height=180,
-                placeholder="Paste or type the JD here for M Group...",
+                placeholder="Paste or type the JD here ...",
             )
         else:
             template = st.selectbox("Select template:", list(JOB_TEMPLATES.keys()))
@@ -305,7 +305,7 @@ def render_job_descriptions():
                     if jd.get("mgroup_role_family"):
                         ctx.append(f"Role family: {jd['mgroup_role_family']}")
                     if ctx:
-                        st.write("**M Group context:** " + " | ".join(ctx))
+                        st.write("**Context:** " + " | ".join(ctx))
                     if st.button("Delete", key=f"delete_jd_{i}"):
                         st.session_state.job_descriptions.pop(i)
                         st.rerun()
@@ -314,7 +314,7 @@ def render_job_descriptions():
 def build_mgroup_job_context(jd: Dict[str, Any]) -> str:
     base = jd.get("description", "")
     bits = [
-        "Employer: M Group Services, delivering essential infrastructure across "
+        "Employer: Delivering essential infrastructure across "
         "water, energy, highways, rail & aviation, and telecom in the UK & Ireland "
         "with a safety-first, client-centric culture."
     ]
@@ -339,10 +339,10 @@ def render_analysis_results():
         st.warning("Please add job descriptions first.")
         return
 
-    st.info(
-        "Scoring is tuned for M Group Services infrastructure roles "
-        "across water, energy, highways, rail & aviation, and telecom."
-    )
+    #st.info(
+    #    "Scoring is tuned for Utilities Services infrastructure roles "
+    #    "across water, energy, highways, rail & aviation, and telecom."
+    #)
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -538,7 +538,7 @@ def render_comprehensive_results():
         )
 
     st.markdown("---")
-    st.subheader("M Group Infrastructure Insights")
+    st.subheader("Insights")
     stats = compute_mgroup_insights(success)
     m1, m2, m3, m4 = st.columns(4)
     with m1:
@@ -626,7 +626,7 @@ def render_enhanced_chatbot():
             st.caption(ex.get("timestamp", ""))
             st.markdown("---")
 
-    st.subheader("Ask About Your M Group Talent Pool")
+    st.subheader("Ask About Your Talent Pool")
     with st.form(key="chat_form", clear_on_submit=True):
         q = st.text_input(
             "Question",
@@ -647,7 +647,7 @@ def render_enhanced_chatbot():
 def process_enhanced_chat(question: str):
     engine = st.session_state.screening_engine
     context_parts = [
-        "EMPLOYER: M Group Services (water, energy, highways, rail & aviation, telecom; UK & Ireland)."
+        "EMPLOYER: Utilites Services (water, energy, highways, rail & aviation, telecom; UK & Ireland)."
     ]
     if st.session_state.resumes_data:
         context_parts.append(f"RESUMES ({len(st.session_state.resumes_data)}):")
