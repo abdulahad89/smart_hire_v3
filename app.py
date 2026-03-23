@@ -407,30 +407,28 @@ def run_comprehensive_analysis(selected_resumes, selected_jds, analysis_depth):
                 # Create temporary file for analysis
                 temp_path = create_temp_file_from_data(
                     resume_data["raw_text"],
-                    resume_data["filename"]
+                    resume_data["filename"],
                 )
 
-                # If you have a helper that augments the JD with M Group context, use it here
-                # otherwise just use jd_data["description"]
+                # Use augmented JD description if helper exists, otherwise plain text
                 try:
                     augmented_jd_description = build_mgroup_job_context(jd_data)
                 except NameError:
                     augmented_jd_description = jd_data["description"]
 
-                # ----- CALL THE ENGINE -----
+                # ---- CALL THE ENGINE ----
                 result = st.session_state.screening_engine.process_single_resume(
                     temp_path,
                     resume_data["filename"],
                     augmented_jd_description,
                 )
 
-                # ----- DEBUG BLOCK (STEP B) -----
+                # ---- DEBUG BLOCK ----
                 if result.get("status") != "completed":
                     st.error(
                         f"Analysis failed for {resume_data['filename']} "
                         f"vs {jd_data['title']}: {result.get('error', 'Unknown error')}"
                     )
-                    # Show whatever raw text we have from the LLM
                     raw = (
                         result.get("analysis", {}).get("scoring_raw")
                         or result.get("raw")
@@ -438,7 +436,7 @@ def run_comprehensive_analysis(selected_resumes, selected_jds, analysis_depth):
                     )
                     st.write("RAW LLM OUTPUT:", raw)
 
-                # Add context information (still useful even if failed)
+                # Add context information so downstream views still work
                 result["resume_index"] = resume_idx
                 result["jd_index"] = jd_idx
                 result["jd_title"] = jd_data["title"]
@@ -457,16 +455,14 @@ def run_comprehensive_analysis(selected_resumes, selected_jds, analysis_depth):
                     f"vs {jd_data['title']}: {e}"
                 )
 
-    # Store results
+    # Store results in session state
     st.session_state.analysis_results = results
 
     progress_bar.empty()
     status_text.empty()
 
     st.success(f"Completed {len(results)} analyses!")
-
-    if results:
-        show_analysis_summary(results)
+    # (Optional) we intentionally do NOT call show_analysis_summary here while debugging
 
 def create_temp_file_from_data(text_data: str, filename: str) -> str:
     temp_dir = "./data/temp_uploads"
