@@ -489,6 +489,7 @@ def compute_mgroup_insights(successful_results: List[Dict[str, Any]]) -> Dict[st
 def render_comprehensive_results():
     st.subheader("Analysis Results Dashboard")
     results = st.session_state.analysis_results
+    st.write("DEBUG raw results:", st.session_state.analysis_results)  # Debug
     success = [r for r in results if r.get("status") == "completed"]
     if not success:
         st.info("No successful analyses yet.")
